@@ -433,12 +433,19 @@ func scanBuild(s rowScanner) (*domain.ArtifactBuild, error) {
 // ---------------------------------------------------------
 
 func (s *SQLiteStore) CreateSchedule(ctx context.Context, sched *domain.Schedule) error {
+	if err := sched.DeliveryContext.Validate(); err != nil {
+		return err
+	}
+	deliveryJSON, err := json.Marshal(sched.DeliveryContext)
+	if err != nil {
+		return err
+	}
 	query := `
-	INSERT INTO schedules (id, action_id, cron_expr, timezone, next_run_at, last_run_at, enabled, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`
-	_, err := s.db.ExecContext(ctx, query,
+	INSERT INTO schedules (id, action_id, cron_expr, timezone, next_run_at, last_run_at, enabled, created_at, updated_at, delivery_context_json)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+	_, err = s.db.ExecContext(ctx, query,
 		sched.ID, sched.ActionID, sched.CronExpr, sched.Timezone,
-		sched.NextRunAt, sched.LastRunAt, sched.Enabled, sched.CreatedAt, sched.UpdatedAt,
+		sched.NextRunAt, sched.LastRunAt, sched.Enabled, sched.CreatedAt, sched.UpdatedAt, string(deliveryJSON),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create schedule: %w", err)
@@ -448,21 +455,25 @@ func (s *SQLiteStore) CreateSchedule(ctx context.Context, sched *domain.Schedule
 
 func (s *SQLiteStore) GetSchedule(ctx context.Context, id string) (*domain.Schedule, error) {
 	query := `
-	SELECT id, action_id, cron_expr, timezone, next_run_at, last_run_at, enabled, created_at, updated_at
+	SELECT id, action_id, cron_expr, timezone, next_run_at, last_run_at, enabled, created_at, updated_at, delivery_context_json
 	FROM schedules WHERE id = ?;`
 	row := s.db.QueryRowContext(ctx, query, id)
 
 	var sched domain.Schedule
 	var lastRun sql.NullTime
+	var deliveryJSON string
 	err := row.Scan(
 		&sched.ID, &sched.ActionID, &sched.CronExpr, &sched.Timezone,
-		&sched.NextRunAt, &lastRun, &sched.Enabled, &sched.CreatedAt, &sched.UpdatedAt,
+		&sched.NextRunAt, &lastRun, &sched.Enabled, &sched.CreatedAt, &sched.UpdatedAt, &deliveryJSON,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan schedule: %w", err)
+	}
+	if err := decodeScheduleDelivery(&sched, deliveryJSON); err != nil {
+		return nil, err
 	}
 	if lastRun.Valid {
 		t := lastRun.Time
@@ -472,12 +483,19 @@ func (s *SQLiteStore) GetSchedule(ctx context.Context, id string) (*domain.Sched
 }
 
 func (s *SQLiteStore) UpdateSchedule(ctx context.Context, sched *domain.Schedule) error {
+	if err := sched.DeliveryContext.Validate(); err != nil {
+		return err
+	}
+	deliveryJSON, err := json.Marshal(sched.DeliveryContext)
+	if err != nil {
+		return err
+	}
 	query := `
 	UPDATE schedules
-	SET cron_expr = ?, timezone = ?, next_run_at = ?, last_run_at = ?, enabled = ?, updated_at = ?
+	SET cron_expr = ?, timezone = ?, next_run_at = ?, last_run_at = ?, enabled = ?, updated_at = ?, delivery_context_json = ?
 	WHERE id = ?;`
 	res, err := s.db.ExecContext(ctx, query,
-		sched.CronExpr, sched.Timezone, sched.NextRunAt, sched.LastRunAt, sched.Enabled, sched.UpdatedAt, sched.ID,
+		sched.CronExpr, sched.Timezone, sched.NextRunAt, sched.LastRunAt, sched.Enabled, sched.UpdatedAt, string(deliveryJSON), sched.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update schedule: %w", err)
@@ -504,7 +522,7 @@ func (s *SQLiteStore) AdvanceScheduleNextRun(ctx context.Context, id string, nex
 
 func (s *SQLiteStore) ListDueSchedules(ctx context.Context, now time.Time, limit int) ([]*domain.Schedule, error) {
 	query := `
-	SELECT id, action_id, cron_expr, timezone, next_run_at, last_run_at, enabled, created_at, updated_at
+	SELECT id, action_id, cron_expr, timezone, next_run_at, last_run_at, enabled, created_at, updated_at, delivery_context_json
 	FROM schedules
 	WHERE enabled = 1 AND next_run_at <= ?
 	ORDER BY next_run_at ASC
@@ -519,11 +537,15 @@ func (s *SQLiteStore) ListDueSchedules(ctx context.Context, now time.Time, limit
 	for rows.Next() {
 		var sched domain.Schedule
 		var lastRun sql.NullTime
+		var deliveryJSON string
 		if err := rows.Scan(
 			&sched.ID, &sched.ActionID, &sched.CronExpr, &sched.Timezone,
-			&sched.NextRunAt, &lastRun, &sched.Enabled, &sched.CreatedAt, &sched.UpdatedAt,
+			&sched.NextRunAt, &lastRun, &sched.Enabled, &sched.CreatedAt, &sched.UpdatedAt, &deliveryJSON,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan due schedule: %w", err)
+		}
+		if err := decodeScheduleDelivery(&sched, deliveryJSON); err != nil {
+			return nil, err
 		}
 		if lastRun.Valid {
 			t := lastRun.Time
@@ -589,7 +611,7 @@ func (s *SQLiteStore) RecordScheduleOccurrence(
 
 func (s *SQLiteStore) ListSchedules(ctx context.Context, actionID string) ([]*domain.Schedule, error) {
 	query := `
-	SELECT id, action_id, cron_expr, timezone, next_run_at, last_run_at, enabled, created_at, updated_at
+	SELECT id, action_id, cron_expr, timezone, next_run_at, last_run_at, enabled, created_at, updated_at, delivery_context_json
 	FROM schedules WHERE action_id = ? ORDER BY created_at DESC;`
 	rows, err := s.db.QueryContext(ctx, query, actionID)
 	if err != nil {
@@ -601,11 +623,15 @@ func (s *SQLiteStore) ListSchedules(ctx context.Context, actionID string) ([]*do
 	for rows.Next() {
 		var sched domain.Schedule
 		var lastRun sql.NullTime
+		var deliveryJSON string
 		if err := rows.Scan(
 			&sched.ID, &sched.ActionID, &sched.CronExpr, &sched.Timezone,
-			&sched.NextRunAt, &lastRun, &sched.Enabled, &sched.CreatedAt, &sched.UpdatedAt,
+			&sched.NextRunAt, &lastRun, &sched.Enabled, &sched.CreatedAt, &sched.UpdatedAt, &deliveryJSON,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan schedule: %w", err)
+		}
+		if err := decodeScheduleDelivery(&sched, deliveryJSON); err != nil {
+			return nil, err
 		}
 		if lastRun.Valid {
 			t := lastRun.Time
@@ -627,6 +653,13 @@ func (s *SQLiteStore) DeleteSchedule(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func decodeScheduleDelivery(sched *domain.Schedule, raw string) error {
+	if err := json.Unmarshal([]byte(raw), &sched.DeliveryContext); err != nil {
+		return fmt.Errorf("decode schedule delivery context: %w", err)
+	}
+	return sched.DeliveryContext.Validate()
 }
 
 // ---------------------------------------------------------

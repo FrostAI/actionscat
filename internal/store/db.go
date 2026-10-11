@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS schedules (
 	last_run_at DATETIME,
 	enabled INTEGER NOT NULL DEFAULT 1,
 	created_at DATETIME NOT NULL,
-	updated_at DATETIME NOT NULL
+	updated_at DATETIME NOT NULL,
+	delivery_context_json TEXT NOT NULL DEFAULT 'null'
 );
 
 CREATE TABLE IF NOT EXISTS schedule_occurrences (
@@ -160,6 +161,48 @@ func OpenDB(dbPath string) (*sql.DB, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to run database migration: %w", err)
 	}
+	if err := migrateScheduleDelivery(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 
 	return db, nil
+}
+
+func hasScheduleDelivery(db *sql.DB) (bool, error) {
+	rows, err := db.Query("PRAGMA table_info(schedules)")
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, notNull, primaryKey int
+		var name, kind string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&id, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			return false, err
+		}
+		if name == "delivery_context_json" {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+func migrateScheduleDelivery(db *sql.DB) error {
+	exists, err := hasScheduleDelivery(db)
+	if err != nil {
+		return fmt.Errorf("inspect schedule delivery migration: %w", err)
+	}
+	if exists {
+		return nil
+	}
+	if _, err := db.Exec("ALTER TABLE schedules ADD COLUMN delivery_context_json TEXT NOT NULL DEFAULT 'null'"); err != nil {
+		// A concurrent opener may have completed the same additive migration.
+		if exists, checkErr := hasScheduleDelivery(db); checkErr == nil && exists {
+			return nil
+		}
+		return fmt.Errorf("migrate schedule delivery context: %w", err)
+	}
+	return nil
 }

@@ -146,13 +146,19 @@ func (s *Scheduler) processDueSchedule(ctx context.Context, sched *domain.Schedu
 	// 2. Prepare Run via Runner
 	scheduledFor := sched.NextRunAt
 	runReq := runner.CreateRunRequest{
-		ActionID:    sched.ActionID,
-		TriggerType: domain.TriggerTypeSchedule,
+		ActionID:        sched.ActionID,
+		TriggerType:     domain.TriggerTypeSchedule,
+		DeliveryContext: sched.DeliveryContext,
 		TriggerMetadata: map[string]string{
 			"schedule_id":   sched.ID,
 			"cron_expr":     sched.CronExpr,
 			"scheduled_for": scheduledFor.Format(time.RFC3339),
 		},
+	}
+	if err := sched.DeliveryContext.Validate(); err != nil {
+		log.Printf("[scheduler] invalid delivery context for schedule %s: %v", sched.ID, err)
+		_ = s.store.AdvanceScheduleNextRun(ctx, sched.ID, nextRunAt)
+		return
 	}
 
 	run, err := s.runner.PrepareRun(ctx, runReq)

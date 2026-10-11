@@ -37,11 +37,14 @@ type Context struct {
 	RuntimeToken    string
 
 	// Event variables
-	Platform  string
-	SessionID string
-	UserID    string
-	GroupID   string
-	Text      string
+	Platform    string
+	AdapterID   string
+	MessageType string
+	TargetID    string
+	SessionID   string
+	UserID      string
+	GroupID     string
+	Text        string
 }
 
 // GetContext inspects environment variables injected by ActionsCat Core.
@@ -55,11 +58,14 @@ func GetContext() *Context {
 		RuntimeEndpoint: strings.TrimRight(os.Getenv("ACTIONSCAT_RUNTIME_ENDPOINT"), "/"),
 		RuntimeToken:    os.Getenv("ACTIONSCAT_RUNTIME_TOKEN"),
 
-		Platform:  os.Getenv("ACTIONSCAT_EVENT_PLATFORM"),
-		SessionID: os.Getenv("ACTIONSCAT_EVENT_SESSION_ID"),
-		UserID:    os.Getenv("ACTIONSCAT_EVENT_USER_ID"),
-		GroupID:   os.Getenv("ACTIONSCAT_EVENT_GROUP_ID"),
-		Text:      os.Getenv("ACTIONSCAT_EVENT_TEXT"),
+		Platform:    os.Getenv("ACTIONSCAT_EVENT_PLATFORM"),
+		AdapterID:   os.Getenv("ACTIONSCAT_EVENT_ADAPTER_ID"),
+		MessageType: os.Getenv("ACTIONSCAT_EVENT_MESSAGE_TYPE"),
+		TargetID:    os.Getenv("ACTIONSCAT_EVENT_TARGET_ID"),
+		SessionID:   os.Getenv("ACTIONSCAT_EVENT_SESSION_ID"),
+		UserID:      os.Getenv("ACTIONSCAT_EVENT_USER_ID"),
+		GroupID:     os.Getenv("ACTIONSCAT_EVENT_GROUP_ID"),
+		Text:        os.Getenv("ACTIONSCAT_EVENT_TEXT"),
 	}
 }
 
@@ -118,12 +124,13 @@ type MessageItem struct {
 
 // SendMessageRequest carries canonical routing and message content for FrostAgent delivery.
 type SendMessageRequest struct {
-	Platform    string        ` + "`" + `json:"platform,omitempty"` + "`" + `
-	MessageType string        ` + "`" + `json:"message_type,omitempty"` + "`" + `
-	TargetID    string        ` + "`" + `json:"target_id,omitempty"` + "`" + `
-	Session     string        ` + "`" + `json:"session,omitempty"` + "`" + `
-	Messages    []MessageItem ` + "`" + `json:"messages,omitempty"` + "`" + `
-	Content     string        ` + "`" + `json:"content,omitempty"` + "`" + `
+	Platform    string         ` + "`" + `json:"platform,omitempty"` + "`" + `
+	MessageType string         ` + "`" + `json:"message_type,omitempty"` + "`" + `
+	TargetID    string         ` + "`" + `json:"target_id,omitempty"` + "`" + `
+	Session     string         ` + "`" + `json:"session,omitempty"` + "`" + `
+	Messages    []MessageItem  ` + "`" + `json:"messages,omitempty"` + "`" + `
+	Content     string         ` + "`" + `json:"content,omitempty"` + "`" + `
+	Metadata    map[string]any ` + "`" + `json:"metadata,omitempty"` + "`" + `
 }
 
 // Send sends a structured message request through Core's trusted FrostAgent proxy.
@@ -189,7 +196,9 @@ func Reply(ctx context.Context, text string) error {
 	c := GetContext()
 	platform := c.Platform
 	var msgType, targetID string
-	if c.GroupID != "" {
+	if c.TargetID != "" && (c.MessageType == "group" || c.MessageType == "private") {
+		msgType, targetID = c.MessageType, c.TargetID
+	} else if c.GroupID != "" {
 		msgType = "group"
 		targetID = c.GroupID
 	} else if c.UserID != "" {
@@ -201,11 +210,16 @@ func Reply(ctx context.Context, text string) error {
 		return ErrNoSession
 	}
 
+	var metadata map[string]any
+	if c.AdapterID != "" {
+		metadata = map[string]any{"adapter_id": c.AdapterID}
+	}
 	return Send(ctx, SendMessageRequest{
 		Platform:    platform,
 		MessageType: msgType,
 		TargetID:    targetID,
 		Session:     c.SessionID,
+		Metadata:    metadata,
 		Messages: []MessageItem{
 			{Type: "plain", Text: text},
 		},

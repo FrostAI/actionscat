@@ -100,10 +100,14 @@ type CreateRunRequest struct {
 	TriggerType     domain.TriggerType
 	TriggerMetadata map[string]string
 	ExtraEnv        map[string]string // e.g. matcher regex captures
+	DeliveryContext *domain.DeliveryContext
 }
 
 // PrepareRun validates the action and constructs an immutable domain.Run in queued status.
 func (r *Runner) PrepareRun(ctx context.Context, req CreateRunRequest) (*domain.Run, error) {
+	if err := req.DeliveryContext.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid delivery context: %w", err)
+	}
 	// 1. Fetch and validate Action
 	act, err := r.store.GetAction(ctx, req.ActionID)
 	if err != nil {
@@ -161,6 +165,11 @@ func (r *Runner) PrepareRun(ctx context.Context, req CreateRunRequest) (*domain.
 			}
 			plannedEnv[inj.EnvVar] = string(stateData)
 		}
+	}
+
+	// Persisted trigger routing takes precedence over state injections.
+	for k, v := range req.DeliveryContext.Environment() {
+		plannedEnv[k] = v
 	}
 
 	// Total environment size validation
