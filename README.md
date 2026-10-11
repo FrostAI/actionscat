@@ -127,6 +127,11 @@ $env:ACTIONSCAT_ENV_FILE = "./custom.env"
 - `POST /api/v1/actions/:id/runs`: 手动触发执行 Run
 - `GET /api/v1/actions/:id/runs`: 获取执行历史及状态
 - `POST /api/v1/actions/:id/schedules`: 创建 Cron 定时调度规则
+  - 可选 `delivery_context` 保存触发器的收件信息：`platform`、`message_type`（`private`/`group`）、`target_id`，以及可选 `adapter_id`、`session_id`、`user_id`、`group_id`。字段按消息类型校验；缺省时保持旧任务行为。
+  - SQLite 启动时为旧 `schedules` 表添加 `delivery_context_json`，现有行默认 `null`；不修改旧调度时间、启用状态或历史运行。
+  - Scheduler 为每次 Run 注入 `ACTIONSCAT_EVENT_PLATFORM / ADAPTER_ID / MESSAGE_TYPE / TARGET_ID / SESSION_ID / USER_ID / GROUP_ID`，收件上下文优先于 Action 的状态注入。目标属于触发器配置，Action 源码继续调用 `actionscat.Reply(...)` 与 `frostagent.sendmsg` 能力。
+  - SDK（包括构建沙箱内置副本）读取显式消息类型与目标；`Reply` 通过 `metadata.adapter_id` 传输选择器保留 AstrBot 原平台。无上下文的旧任务继续按已有事件变量回复，全部缺失时仍返回 `ErrNoSession`。
+  - 接入 FrostAgent 时先升级 Core，再创建带上下文的任务，并重新构建 Action 以使用新版内置 SDK。回传地址与凭据仍由 Core 配置及单次 Run 能力 Token 控制。
 - `POST /api/v1/actions/:id/matchers`: 创建消息匹配规则
 
 ### 事件分发接口 (Event Dispatch)

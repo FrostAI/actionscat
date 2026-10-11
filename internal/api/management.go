@@ -449,15 +449,20 @@ func (m *ManagementAPI) GetRunLogs(c *gin.Context) {
 // ---------------------------------------------------------
 
 type CreateScheduleReq struct {
-	CronExpr string `json:"cron_expr" binding:"required"`
-	Timezone string `json:"timezone"`
-	Enabled  bool   `json:"enabled"`
+	CronExpr        string                  `json:"cron_expr" binding:"required"`
+	Timezone        string                  `json:"timezone"`
+	Enabled         bool                    `json:"enabled"`
+	DeliveryContext *domain.DeliveryContext `json:"delivery_context,omitempty"`
 }
 
 func (m *ManagementAPI) CreateSchedule(c *gin.Context) {
 	actionID := c.Param("id")
 	var req CreateScheduleReq
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := req.DeliveryContext.Validate(); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -474,14 +479,15 @@ func (m *ManagementAPI) CreateSchedule(c *gin.Context) {
 	schedID := fmt.Sprintf("sched_%s", hex.EncodeToString(b))
 
 	sched := &domain.Schedule{
-		ID:        schedID,
-		ActionID:  actionID,
-		CronExpr:  req.CronExpr,
-		Timezone:  req.Timezone,
-		NextRunAt: nextRun,
-		Enabled:   req.Enabled,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:              schedID,
+		ActionID:        actionID,
+		CronExpr:        req.CronExpr,
+		Timezone:        req.Timezone,
+		NextRunAt:       nextRun,
+		Enabled:         req.Enabled,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		DeliveryContext: req.DeliveryContext,
 	}
 
 	if err := m.store.CreateSchedule(c.Request.Context(), sched); err != nil {

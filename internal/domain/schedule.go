@@ -6,15 +6,16 @@ import (
 
 // Schedule represents a deterministic cron schedule that produces Runs.
 type Schedule struct {
-	ID        string     `json:"id"`
-	ActionID  string     `json:"action_id"`
-	CronExpr  string     `json:"cron_expr"`
-	Timezone  string     `json:"timezone"` // IANA timezone, e.g. "UTC", "Asia/Shanghai"
-	NextRunAt time.Time  `json:"next_run_at"`
-	LastRunAt *time.Time `json:"last_run_at,omitempty"`
-	Enabled   bool       `json:"enabled"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ID              string           `json:"id"`
+	ActionID        string           `json:"action_id"`
+	CronExpr        string           `json:"cron_expr"`
+	Timezone        string           `json:"timezone"` // IANA timezone, e.g. "UTC", "Asia/Shanghai"
+	NextRunAt       time.Time        `json:"next_run_at"`
+	LastRunAt       *time.Time       `json:"last_run_at,omitempty"`
+	Enabled         bool             `json:"enabled"`
+	CreatedAt       time.Time        `json:"created_at"`
+	UpdatedAt       time.Time        `json:"updated_at"`
+	DeliveryContext *DeliveryContext `json:"delivery_context,omitempty"`
 }
 
 // ScheduleOccurrence records a processed schedule run trigger to ensure idempotency.
