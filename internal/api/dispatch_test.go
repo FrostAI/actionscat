@@ -48,7 +48,7 @@ func setupDispatchTest(t *testing.T) (*store.SQLiteStore, *store.FileStore, *gin
 	return st, fs, router
 }
 
-func createDispatchAction(t *testing.T, st *store.SQLiteStore, fs *store.FileStore, actionID string) {
+func createDispatchAction(t *testing.T, st *store.SQLiteStore, fs *store.FileStore, actionID string, injections ...domain.StateInjection) {
 	t.Helper()
 	ctx := context.Background()
 	now := time.Now().UTC()
@@ -64,11 +64,12 @@ func createDispatchAction(t *testing.T, st *store.SQLiteStore, fs *store.FileSto
 	_ = st.CreateAction(ctx, act)
 
 	ver := &domain.ActionVersion{
-		ID:            "ver_" + actionID,
-		ActionID:      actionID,
-		VersionNumber: 1,
-		SourceDigest:  "digest",
-		SourcePath:    "path",
+		ID:              "ver_" + actionID,
+		ActionID:        actionID,
+		VersionNumber:   1,
+		SourceDigest:    "digest",
+		SourcePath:      "path",
+		StateInjections: injections,
 		RuntimeSpec: domain.RuntimeSpec{
 			Entrypoint: "entrypoint",
 		},

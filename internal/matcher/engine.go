@@ -62,10 +62,12 @@ func (e *Engine) MatchAndDispatch(ctx context.Context, event domain.MessageEvent
 		}
 
 		// Prepare extra environment variables from event and captures
-		extraEnv := make(map[string]string, len(captures)+5)
+		extraEnv := make(map[string]string, len(captures)+6)
 		maps.Copy(extraEnv, captures)
 		extraEnv["ACTIONSCAT_EVENT_TEXT"] = event.Text
 		extraEnv["ACTIONSCAT_EVENT_PLATFORM"] = event.Platform
+		// The adapter selector belongs to the event, even when absent.
+		extraEnv["ACTIONSCAT_EVENT_ADAPTER_ID"] = event.AdapterID
 		extraEnv["ACTIONSCAT_EVENT_SESSION_ID"] = event.SessionID
 		extraEnv["ACTIONSCAT_EVENT_USER_ID"] = event.UserID
 		extraEnv["ACTIONSCAT_EVENT_GROUP_ID"] = event.GroupID

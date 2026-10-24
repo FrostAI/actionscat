@@ -33,6 +33,7 @@ type Matcher struct {
 type MessageEvent struct {
 	Text      string            `json:"text"`
 	Platform  string            `json:"platform"`
+	AdapterID string            `json:"adapter_id,omitempty"`
 	SessionID string            `json:"session_id"`
 	UserID    string            `json:"user_id"`
 	GroupID   string            `json:"group_id"`

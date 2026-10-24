@@ -13,6 +13,7 @@ import (
 type IncomingEventRequest struct {
 	// Platform-neutral fields
 	Platform  string            `json:"platform,omitempty"`
+	AdapterID string            `json:"adapter_id,omitempty"`
 	SessionID string            `json:"session_id,omitempty"`
 	UserID    string            `json:"user_id,omitempty"`
 	GroupID   string            `json:"group_id,omitempty"`
@@ -68,6 +69,7 @@ func (req *IncomingEventRequest) Normalize() domain.MessageEvent {
 
 	return domain.MessageEvent{
 		Platform:  strings.TrimSpace(platform),
+		AdapterID: strings.TrimSpace(req.AdapterID),
 		SessionID: strings.TrimSpace(sessionID),
 		UserID:    strings.TrimSpace(userID),
 		GroupID:   strings.TrimSpace(groupID),
