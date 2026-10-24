@@ -136,6 +136,8 @@ $env:ACTIONSCAT_ENV_FILE = "./custom.env"
 
 ### 事件分发接口 (Event Dispatch)
 - `POST /api/v1/dispatch`: 消息事件路由分发入口（支持现代标准平台无关结构及传统 OneBot/QQ 格式）
+  - 可选顶层 `adapter_id` 由接入方的可信传输适配器提供，独立于原始 `platform`；Matcher 将其写入 Run 的 `ACTIONSCAT_EVENT_ADAPTER_ID`，SDK `Reply` 再通过 `metadata.adapter_id` 保留回调适配器。
+  - 事件的 `metadata.adapter_id` 和正则捕获映射不能覆盖该适配器选择器。未传顶层 `adapter_id` 的旧事件保持空选择器，继续使用原有平台路由；本改动不需要数据库迁移。
 
 ### 运行时能力接口 (Runtime Capability API)
 - `POST /api/v1/runtime/state`: 沙箱单次执行受控状态原子写入
