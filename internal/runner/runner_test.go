@@ -153,6 +153,52 @@ func TestRunner_CreateRun_Validation(t *testing.T) {
 	}
 }
 
+func TestRunner_MatcherAdapterPrecedenceIsScoped(t *testing.T) {
+	const adapterKey = "ACTIONSCAT_EVENT_ADAPTER_ID"
+	for _, tc := range []struct {
+		name        string
+		triggerType domain.TriggerType
+		extraEnv    map[string]string
+		wantAdapter string
+	}{
+		{name: "matcher_explicit", triggerType: domain.TriggerTypeMatcher, extraEnv: map[string]string{adapterKey: "astrbot"}, wantAdapter: "astrbot"},
+		{name: "matcher_empty", triggerType: domain.TriggerTypeMatcher, extraEnv: map[string]string{adapterKey: ""}, wantAdapter: ""},
+		{name: "matcher_absent", triggerType: domain.TriggerTypeMatcher, wantAdapter: "state-adapter"},
+		{name: "manual", triggerType: domain.TriggerTypeManual, extraEnv: map[string]string{adapterKey: "extra-adapter"}, wantAdapter: "state-adapter"},
+		{name: "schedule", triggerType: domain.TriggerTypeSchedule, extraEnv: map[string]string{adapterKey: "extra-adapter"}, wantAdapter: "state-adapter"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st, fs, ss, _, r := setupTestRunner(t, 1)
+			act, _, _ := createRunnableAction(t, st, fs, "fixture-action", 1, []domain.StateInjection{
+				{StatePath: "adapter.txt", EnvVar: adapterKey},
+				{StatePath: "platform.txt", EnvVar: "ACTIONSCAT_EVENT_PLATFORM"},
+			})
+			if err := ss.WriteState(act.ID, "adapter.txt", []byte("state-adapter")); err != nil {
+				t.Fatal(err)
+			}
+			if err := ss.WriteState(act.ID, "platform.txt", []byte("state-platform")); err != nil {
+				t.Fatal(err)
+			}
+			if tc.extraEnv == nil {
+				tc.extraEnv = make(map[string]string)
+			}
+			tc.extraEnv["ACTIONSCAT_EVENT_PLATFORM"] = "extra-platform"
+			run, err := r.PrepareRun(t.Context(), CreateRunRequest{
+				ActionID: act.ID, TriggerType: tc.triggerType, ExtraEnv: tc.extraEnv,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if run.PlannedEnv[adapterKey] != tc.wantAdapter {
+				t.Fatalf("adapter = %q, want %q", run.PlannedEnv[adapterKey], tc.wantAdapter)
+			}
+			if run.PlannedEnv["ACTIONSCAT_EVENT_PLATFORM"] != "state-platform" {
+				t.Fatalf("changed existing state precedence: %+v", run.PlannedEnv)
+			}
+		})
+	}
+}
+
 func TestRunner_ExecuteRun_EndToEndAndTokenRevocation(t *testing.T) {
 	st, fs, _, sb, r := setupTestRunner(t, 2)
 	ctx := t.Context()

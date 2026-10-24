@@ -16,22 +16,35 @@ import (
 
 func TestDispatchMatcherReplyPreservesAdapterRouting(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		adapterID  string
-		platform   string
-		groupID    string
-		legacyBody bool
+		name           string
+		adapterID      string
+		platform       string
+		groupID        string
+		legacyBody     bool
+		stateInjection string
 	}{
 		{name: "astrbot_group", adapterID: "astrbot", platform: "fixture-platform", groupID: "fixture-group"},
 		{name: "astrbot_private", adapterID: "astrbot", platform: "fixture-platform"},
 		{name: "modern_without_adapter", platform: "qq", groupID: "fixture-group"},
 		{name: "legacy_without_adapter", platform: "qq", groupID: "fixture-group", legacyBody: true},
+		{name: "astrbot_with_state_injection", adapterID: "astrbot", platform: "fixture-platform", groupID: "fixture-group", stateInjection: "present"},
+		{name: "astrbot_with_missing_optional_state", adapterID: "astrbot", platform: "fixture-platform", stateInjection: "missing"},
+		{name: "legacy_with_state_injection", platform: "qq", groupID: "fixture-group", legacyBody: true, stateInjection: "present"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st, fs, router := setupDispatchTest(t)
 			ctx := t.Context()
 			now := time.Now().UTC()
-			createDispatchAction(t, st, fs, "fixture-action")
+			var injections []domain.StateInjection
+			if tc.stateInjection != "" {
+				injections = []domain.StateInjection{{StatePath: "adapter.txt", EnvVar: "ACTIONSCAT_EVENT_ADAPTER_ID", Optional: true}}
+			}
+			createDispatchAction(t, st, fs, "fixture-action", injections...)
+			if tc.stateInjection == "present" {
+				if err := store.NewStateStore(fs.DataDir()).WriteState("fixture-action", "adapter.txt", []byte("forged-state-adapter")); err != nil {
+					t.Fatal(err)
+				}
+			}
 			m := &domain.Matcher{
 				ID:          "fixture-matcher",
 				ActionID:    "fixture-action",

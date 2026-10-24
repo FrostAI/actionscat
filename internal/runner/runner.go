@@ -167,6 +167,13 @@ func (r *Runner) PrepareRun(ctx context.Context, req CreateRunRequest) (*domain.
 		}
 	}
 
+	// Matcher adapter selection comes from the event, not mutable Action state.
+	if req.TriggerType == domain.TriggerTypeMatcher {
+		if adapterID, exists := req.ExtraEnv["ACTIONSCAT_EVENT_ADAPTER_ID"]; exists {
+			plannedEnv["ACTIONSCAT_EVENT_ADAPTER_ID"] = adapterID
+		}
+	}
+
 	// Persisted trigger routing takes precedence over state injections.
 	for k, v := range req.DeliveryContext.Environment() {
 		plannedEnv[k] = v
